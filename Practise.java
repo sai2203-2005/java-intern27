@@ -1,43 +1,60 @@
+import java.util.concurrent.atomic.AtomicInteger;
+
+class UnsafeCounter {
+    private int count = 0;
+
+    public void increment() {
+        count++; // Not thread-safe (Read-Modify-Write is not atomic)
+    }
+
+    public int getCount() {
+        return count;
+    }
+}
+
+class SafeCounter {
+    private int count = 0;
+
+    public synchronized void increment() {
+        count++; // Thread-safe using intrinsic lock (monitor)
+    }
+
+    public int getCount() {
+        return count;
+    }
+}
+
+class AtomicCounter {
+    private final AtomicInteger count = new AtomicInteger(0);
+
+    public void increment() {
+        count.incrementAndGet(); // Thread-safe using lock-free CAS (Compare-And-Swap)
+    }
+
+    public int getCount() {
+        return count.get();
+    }
+}
+
 public class Practise {
+    public static void main(String[] args) throws InterruptedException {
 
-    static final long N = 100_000_000L;
-    static final int THREAD_COUNT = 4;
+        int numberOfThreads = 5;
+        int incrementsPerThread = 100_000;
 
-    public static void main(String[] args)
-            throws InterruptedException {
+        UnsafeCounter unsafeCounter = new UnsafeCounter();
+        SafeCounter safeCounter = new SafeCounter();
+        AtomicCounter atomicCounter = new AtomicCounter();
 
-        // 1. Single-thread execution
-        long start = System.nanoTime();
+        Thread[] threads = new Thread[numberOfThreads];
 
-        long singleResult = calculateSum(1, N);
-
-        long end = System.nanoTime();
-
-        double singleTime = (end - start) / 1_000_000.0;
-
-        System.out.println("Single Thread Result: " + singleResult);
-        System.out.printf("Single Thread Time: %.2f ms%n", singleTime);
-
-
-        // 2. Multithreaded execution
-        long[] results = new long[THREAD_COUNT];
-        Thread[] threads = new Thread[THREAD_COUNT];
-
-        long chunkSize = N / THREAD_COUNT;
-
-        start = System.nanoTime();
-
-        for (int i = 0; i < THREAD_COUNT; i++) {
-
-            long from = i * chunkSize + 1;
-            long to = (i == THREAD_COUNT - 1)
-                    ? N
-                    : (i + 1) * chunkSize;
-
-            final int index = i;
-
+        for (int i = 0; i < numberOfThreads; i++) {
             threads[i] = new Thread(() -> {
-                results[index] = calculateSum(from, to);
+                for (int j = 0; j < incrementsPerThread; j++) {
+                    unsafeCounter.increment();
+                    safeCounter.increment();
+                    atomicCounter.increment();
+                }
             });
 
             threads[i].start();
@@ -48,36 +65,11 @@ public class Practise {
             thread.join();
         }
 
-        long multiResult = 0;
+        int expected = numberOfThreads * incrementsPerThread;
 
-        for (long result : results) {
-            multiResult += result;
-        }
-
-        end = System.nanoTime();
-
-        double multiTime = (end - start) / 1_000_000.0;
-
-        System.out.println("\nMultithreaded Result: " + multiResult);
-        System.out.printf("Multithreaded Time: %.2f ms%n", multiTime);
-
-        System.out.printf(
-            "Speedup: %.2fx%n",
-            singleTime / multiTime
-        );
-
-        System.out.println(
-            "Results Match: " + (singleResult == multiResult)
-        );
-    }
-
-    static long calculateSum(long from, long to) {
-        long sum = 0;
-
-        for (long i = from; i <= to; i++) {
-            sum += i;
-        }
-
-        return sum;
+        System.out.println("Expected count:          " + expected);
+        System.out.println("Unsafe count:            " + unsafeCounter.getCount());
+        System.out.println("Safe count (sync):       " + safeCounter.getCount());
+        System.out.println("Atomic count (atomic):    " + atomicCounter.getCount());
     }
 }
